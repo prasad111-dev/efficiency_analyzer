@@ -1,63 +1,68 @@
-import time
+import streamlit as st
 import cProfile
 import pstats
 import ast
+import time
+import io
 
-
-def analyze_script(script_path):
-    print(f"\nAnalyzing {script_path}...\n")
-
-    # Profile the entire script
+def analyze_script(file_content):
     profiler = cProfile.Profile()
     profiler.enable()
 
     start_time = time.time()
-    exec(open(script_path).read(), {})
+    try:
+        exec(file_content, {})
+    except Exception as e:
+        st.error(f"Execution Error: {e}")
     end_time = time.time()
 
     profiler.disable()
 
-    # Save profile stats
-    stats = pstats.Stats(profiler)
-    stats.sort_stats('cumulative')
-
-    print("\n--- Profiling Report ---")
+    stats_stream = io.StringIO()
+    stats = pstats.Stats(profiler, stream=stats_stream).sort_stats('cumulative')
     stats.print_stats(10)  # Top 10 functions
 
     total_time = end_time - start_time
-    print(f"\n⏱ Total Runtime: {total_time:.4f} seconds")
 
-    if total_time > 2:
-        print("\n⚡ Suggestion: The script took longer than 2 seconds to run. You may want to optimize it.")
-    else:
-        print("\n✅ Good Job: Your script runs efficiently!")
+    return stats_stream.getvalue(), total_time
 
-
-def list_functions(script_path):
-    with open(script_path, "r") as file:
-        tree = ast.parse(file.read(), filename=script_path)
-
+def list_functions(file_content):
+    tree = ast.parse(file_content)
     functions = [node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)]
     return functions
 
-
 def main():
-    script_path = input("Enter the path of the Python script to analyze: ").strip()
+    st.set_page_config("Python Script Analyzer", layout="wide")
+    st.title("🛠️ Python Script Analyzer")
+    st.write("Upload a Python script to analyze its functions and performance!")
 
-    try:
-        functions = list_functions(script_path)
+    uploaded_file = st.file_uploader("Upload a Python (.py) file", type="py")
+
+    if uploaded_file is not None:
+        file_content = uploaded_file.read().decode("utf-8")
+
+        st.subheader("🔍 Function Analysis")
+        functions = list_functions(file_content)
         if functions:
-            print("\nFound Functions:")
+            st.success(f"Found {len(functions)} function(s):")
             for func in functions:
-                print(f"  ➔ {func}")
+                st.write(f"➔ `{func}`")
         else:
-            print("\nNo functions found in the script.")
+            st.warning("No functions found.")
 
-        analyze_script(script_path)
+        st.subheader("⚙️ Profiling Report")
+        with st.spinner("Analyzing script..."):
+            profile_report, total_runtime = analyze_script(file_content)
 
-    except Exception as e:
-        print(f"\n❌ Error analyzing script: {e}")
+        st.code(profile_report)
 
+        st.subheader("⏱️ Script Runtime")
+        st.info(f"Total execution time: **{total_runtime:.4f} seconds**")
+
+        if total_runtime > 2:
+            st.warning("⚡ Suggestion: The script took longer than 2 seconds. Consider optimizing it.")
+        else:
+            st.success("✅ Good Job! Your script runs efficiently.")
 
 if __name__ == "__main__":
     main()
